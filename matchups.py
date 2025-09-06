@@ -1,91 +1,71 @@
 # matchups.py
+import hashlib
 
-def _mk_event_key(p):
-    # Prefer explicit IDs when present
-    return (
-        p.get("event_id")
-        or p.get("game_id")
-        or p.get("fixture_id")
-        or p.get("id")
-        or None
-    )
+def _first(*vals):
+    for v in vals:
+        if v: return v
+    return None
+
+def _event_key(p):
+    # Prefer explicit IDs/time; fall back to a hash of stable fields
+    raw = "|".join(str(_first(
+        p.get("event_id"), p.get("game_id"), p.get("fixture_id"), p.get("id"),
+        p.get("commence_time"), p.get("start_time"), p.get("game_time"),
+        p.get("home_team"), p.get("away_team"),
+        p.get("team"), p.get("team_name"), p.get("team_abbr"),
+        p.get("opponent"), p.get("opponent_team"), p.get("opp"),
+    )) for _ in range(1))
+    if not raw or raw == "None":
+        raw = str(p)[:256]
+    return hashlib.md5(raw.encode("utf-8")).hexdigest()[:8]
 
 def _teams_from_prop(p, league):
     if (league or "").lower() == "ufc":
-        a = p.get("fighter") or p.get("fighter_a") or p.get("player") or "Fighter A"
-        b = p.get("opponent") or p.get("fighter_b") or "Fighter B"
+        a = _first(p.get("fighter"), p.get("fighter_a"), p.get("player"), "Fighter A")
+        b = _first(p.get("opponent"), p.get("fighter_b"), "Fighter B")
         return a, b, "vs"
 
-    # Try explicit home/away first
-    home = p.get("home_team") or p.get("home")
-    away = p.get("away_team") or p.get("away")
+    home = _first(p.get("home_team"), p.get("home"))
+    away = _first(p.get("away_team"), p.get("away"))
+    team = _first(p.get("team"), p.get("team_name"), p.get("team_abbr"))
+    opp  = _first(p.get("opponent"), p.get("opponent_team"), p.get("opp"))
 
-    # Otherwise, collect what we can
-    team = p.get("team") or p.get("team_name") or p.get("team_abbr")
-    opp  = p.get("opponent") or p.get("opponent_team") or p.get("opp")
-
-    # If a matchup string already exists and looks usable, prefer it
     m = p.get("matchup")
     if isinstance(m, str) and ("@" in m or "vs" in m):
-        sp = " vs " if "vs" in m else " @ "
-        parts = m.split(sp)
-        if len(parts) == 2:
-            return parts[0].strip(), parts[1].strip(), ("vs" if sp.strip() == "vs" else "@")
+        if " vs " in m: 
+            parts = m.split(" vs ", 1)
+            return parts[0].strip(), parts[1].strip(), "vs"
+        parts = m.split(" @ ", 1)
+        if len(parts) == 2: 
+            return parts[0].strip(), parts[1].strip(), "@"
 
-    # If we have home/away → use them
     if home or away:
         return (away or "Away"), (home or "Home"), "@"
-
-    # If we only have team/opponent → use them
     if team or opp:
-        a = team or "Away"
-        b = opp  or "Home"
-        return a, b, "@"
-
-    # Last resort
+        return (team or "Away"), (opp or "Home"), "@"
     return "Away", "Home", "@"
 
 def group_props_by_matchup(props, league):
-    league = (league or "").lower()
     by_event = {}
-
-    # First pass: bucket by event key (or a synthetic one)
     for p in props or []:
-        key = _mk_event_key(p)
-        if not key:
-            # build something stable-ish
-            start = p.get("commence_time") or p.get("start_time") or p.get("game_time") or ""
-            team  = p.get("team") or p.get("home_team") or p.get("away_team") or ""
-            opp   = p.get("opponent") or p.get("opponent_team") or ""
-            key = f"{team}|{opp}|{start}"
-
-        bucket = by_event.setdefault(key, {"props": [], "teams": set(), "home": None, "away": None})
-        bucket["props"].append(p)
-
-        # collect possible teams
+        key = _event_key(p)
+        b = by_event.setdefault(key, {"props": [], "teams": set(), "home": None, "away": None})
+        b["props"].append(p)
         for k in ("home_team","away_team","team","team_name","team_abbr","opponent","opponent_team","opp"):
-            if p.get(k): bucket["teams"].add(str(p.get(k)))
+            if p.get(k): b["teams"].add(str(p.get(k)))
+        if p.get("home_team"): b["home"] = p["home_team"]
+        if p.get("away_team"): b["away"] = p["away_team"]
 
-        # keep explicit home/away if present
-        if p.get("home_team"): bucket["home"] = p["home_team"]
-        if p.get("away_team"): bucket["away"] = p["away_team"]
-
-    # Second pass: finalize label per bucket
     out = {}
-    for _, b in by_event.items():
-        a, h, sep = None, None, "@"
-        if league == "ufc":
-            sep = "vs"
+    for key, b in by_event.items():
+        a = b["away"] or None
+        h = b["home"] or None
+        sep = "vs" if (league or "").lower() == "ufc" else "@"
 
-        # Prefer explicit home/away
-        if b["home"] or b["away"]:
-            a = b["away"] or "Away"
-            h = b["home"] or "Home"
-        else:
-            # Derive from collected teams
+        if not (a and h):
             teams = [t for t in b["teams"] if t]
             if len(teams) >= 2:
-                teams = sorted(set(teams))
+                teams = list(dict.fromkeys(teams))  # preserve order, dedupe
                 a, h = teams[0], teams[1]
             elif len(teams) == 1:
                 a, h = teams[0], "Opponent"
@@ -93,8 +73,12 @@ def group_props_by_matchup(props, league):
                 a, h = "Away", "Home"
 
         label = f"{a} {sep} {h}"
-        for p in b["props"]:
-            p["matchup"] = label  # normalize in the payload for the FE too
-        out.setdefault(label, []).extend(b["props"])
+        # If still generic, keep it unique with the event key
+        if label in ("Away @ Home", "Away vs Home", "Away @ Opponent", "Away vs Opponent"):
+            label = f"Game {key}"
 
+        for p in b["props"]:
+            p["matchup"] = label
+        out.setdefault(label, []).extend(b["props"])
     return out
+
