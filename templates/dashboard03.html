@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+     <title>Mora Bets</title>
+  <meta name="description" content="Sports Betting Nfl,NBA,NCCAA,UFC,NHL& MLB Picks for optimized parlays, and expert insights. See today's top picks powered by Mora Bets.">
+     <link rel="canonical" href="https://morabets.com/">
+      <!-- Meta Pixel Code -->
+    <script>
+      !function(f,b,e,v,n,t,s)
+      {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+      n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+      if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+      n.queue=[];t=b.createElement(e);t.async=!0;
+      t.src=v;s=b.getElementsByTagName(e)[0];
+      s.parentNode.insertBefore(t,s)}(window, document,'script',
+      'https://connect.facebook.net/en_US/fbevents.js');
+      fbq('init', '1209944777515078'); 
+      fbq('track', 'PageView');
+    </script>
+    <noscript>
+      <img height="1" width="1" style="display:none"
+      src="https://www.facebook.com/tr?id=1209944777515078&ev=PageView&noscript=1"/>
+    </noscript>
+    <!-- End Meta Pixel Code -->
+      <style>
+    :root{--bg:#0f1420;--card:#161b28;--stroke:#2b3245;--text:#e6e9f2;--muted:#9aa4bf;--green:#2dd36f;--amber:#f9d65a;}
+    html,body{background:var(--bg);color:var(--text);margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif}
+    .wrap{max-width:1200px;margin:0 auto;padding:24px 16px 56px}
+    .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+    h1{margin:0;font-size:22px}
+    .muted{color:var(--muted)}
+    .tabs{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 10px}
+    .tab{background:transparent;color:var(--muted);border:1px solid var(--stroke);padding:8px 12px;border-radius:999px;cursor:pointer}
+    .tab.active{color:var(--text);border-color:#7c6dff;box-shadow:0 0 0 1px #7c6dff inset}
+    .search{width:100%;max-width:420px;padding:10px 12px;border-radius:10px;background:var(--card);border:1px solid var(--stroke);color:var(--text)}
+    .toolbar{display:flex;gap:8px;align-items:center;margin:10px 0 18px}
+    .grid{display:grid;grid-template-columns:repeat(1,minmax(0,1fr));gap:14px}
+    @media(min-width:900px){.grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+    .card{background:var(--card);border:1px solid var(--stroke);border-radius:14px;padding:14px}
+    .row{display:flex;justify-content:space-between;align-items:center;gap:12px}
+    .pill{font-size:12px;border:1px solid var(--stroke);padding:3px 8px;border-radius:999px;color:#cbd3ee}
+    .over{color:var(--green);font-weight:600}
+    .under{color:var(--amber)}
+    .tiny-link{display:inline-flex;align-items:center;gap:6px;color:#9dd0ff;font-size:12px;cursor:pointer;text-decoration:none;border-bottom:1px dashed #2b3245}
+    .tiny-link:hover{color:#cfe6ff}
+    
+    .edge-badge {
+      display: inline-block;
+      font-size: 12px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: #1e9d59;   /* green-ish */
+      color: #fff;
+      margin-left: 8px;
+      line-height: 18px;
+      user-select: none;
+    }
+    
+    /* Hide market tabs (defensive) */
+    #market-tabs { display: none !important; }
+    
+    /* big loading overlay */
+    .loading{
+      position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+      background:rgba(10,14,24,.85);backdrop-filter:saturate(140%) blur(2px);
+      z-index:10;flex-direction:column;text-align:center;padding:24px
+    }
+    .spinner{width:44px;height:44px;border:3px solid #2b3245;border-top-color:#9dd0ff;border-radius:50%;animation:spin 0.9s linear infinite;margin-bottom:12px}
+    @keyframes spin{to{transform:rotate(360deg)}}
+     </style>
+     </head>
+<body>
+  <div id="loading" class="loading">
+    <div class="spinner"></div>
+    <div style="font-weight:700">Loading 1,000+ props…</div>
+    <div class="muted" style="margin-top:6px">This can take a few seconds on first load.</div>
+  </div>
+
+  <div class="wrap">
+    <div class="top">
+      <h1>Mora Bets</h1>
+      <div class="muted"><span id="count">–</span> props</div>
+    </div>
+
+    <!-- League tabs -->
+    <div class="tabs" id="tabs">
+      <button class="tab active" data-league="mlb">MLB</button>
+      <button class="tab" data-league="nfl">NFL</button>
+      <button class="tab" data-league="nba">NBA</button>
+      <button class="tab" data-league="nhl">NHL</button>
+      <button class="tab" data-league="ufc">UFC</button>
+      <button class="tab" data-league="ncaa">NCAA</button>
+    </div>
+
+    <div id="props" class="grid"></div>
+
+<script>
+let currentSport = 'mlb';
+let payload = null;
+let allProps = [];
+let matchupData = {};
+let environmentData = null;
+
+// ---------- Helpers ----------
+function normalizeMatchup(p, league) {
+  if (league === 'ufc') {
+    const a = p.fighter || p.fighter_a || p.player || 'Fighter A';
+    const b = p.opponent || p.fighter_b || 'Fighter B';
+    return `${a} vs ${b}`;
+  }
+  const away = p.away_team || p.away || p.team_away || 'Away';
+  const home = p.home_team || p.home || p.team_home || 'Home';
+  const k = p.matchup || `${away} @ ${home}`;
+  return k.includes('@') || k.includes('vs') ? k : `${away} @ ${home}`;
+}
+
+function groupByMatchup(arr, league) {
+  const out = {};
+  for (const p of arr) {
+    const key = normalizeMatchup(p, league);
+    (out[key] ||= []).push(p);
+  }
+  return out;
+}
+
+function toPct(x) { return (Number(x) * 100).toFixed(1) + '%'; }
+function setCount(n) { document.getElementById('count').textContent = (n||0).toLocaleString(); }
+function hideLoading() { const el = document.getElementById('loading'); if (el) el.style.display = 'none'; }
+
+// ---------- Cards ----------
+function renderPropCard(p) {
+  const stat = (p.stat || p.stat_type || '').replace(/_/g,' ');
+  const line = p.point ?? p.line ?? '';
+  const player = p.player || p.player_name || p.fighter || p.fighter_a || 'Player';
+  const team = p.team || p.team_name || p.team_abbr || p.home_team || p.away_team || '';
+  const over = p.over_odds ?? (typeof p.over === 'object' ? p.over?.price : p.over);
+  const under = p.under_odds ?? (typeof p.under === 'object' ? p.under?.price : p.under);
+
+  // AI edge badge
+  let edgeBadge = '';
+  if (p.ai && (p.ai.edge_over != null || p.ai.edge_under != null)) {
+    const eo = Number(p.ai.edge_over ?? -Infinity);
+    const eu = Number(p.ai.edge_under ?? -Infinity);
+    const pick = p.ai.pick || (Math.abs(eo) >= Math.abs(eu) ? 'OVER' : 'UNDER');
+    const best = pick === 'OVER' ? eo : eu;
+    if (isFinite(best)) edgeBadge = `<span class="edge-badge">${pick} ${best.toFixed(1)}% EV</span>`;
+  }
+
+  return `
+    <div class="card">
+      <div class="row" style="margin-bottom:8px;">
+        <div style="font-weight:700">${player}</div>
+        <div class="muted">${team} ${edgeBadge}</div>
+      </div>
+      <div class="row" style="gap:8px;margin-bottom:8px;">
+        <span class="pill">${stat}${line!==''?` • ${line}`:''}</span>
+        ${over!=null?`<span class="pill over">O ${over}</span>`:''}
+        ${under!=null?`<span class="pill under">U ${under}</span>`:''}
+      </div>
+      <a class="tiny-link" href="#" onclick="displayTodaysGames();return false;">← Back to matchups</a>
+    </div>
+  `;
+}
+
+function renderMatchupCard(matchup, props) {
+  const isUFC = currentSport === 'ufc';
+  const splitBy = isUFC ? ' vs ' : ' @ ';
+  const vs = isUFC ? 'vs' : '@';
+  const [left, right] = (matchup || '').split(splitBy);
+
+  // Favored/high/low labels from environmentData (if present)
+  let envBadge = '';
+  const env = environmentData && environmentData[matchup];
+  if (env && (env.label || env.scoring || env.favored_team)) {
+    const tag = env.label || env.scoring || env.favored_team;
+    envBadge = `<span class="pill">${tag}</span>`;
+  }
+
+  return `
+    <div class="card">
+      <div class="row">
+        <div style="font-weight:700">
+          ${left || (isUFC?'Fighter A':'Away')} ${vs} ${right || (isUFC?'Fighter B':'Home')}
+          ${envBadge}
+        </div>
+        <a class="tiny-link" onclick="showMatchup('${matchup.replace(/'/g,'&#39;')}')">View Props →</a>
+      </div>
+      <div class="muted" style="margin-top:6px">${props.length} props</div>
+    </div>
+  `;
+}
+
+// ---------- Views ----------
+function displayTodaysGames() {
+  const grid = document.getElementById('props');
+  const keys = Object.keys(matchupData || {});
+  if (!keys.length) {
+    grid.innerHTML = `<div class="card"><div class="muted">No ${currentSport.toUpperCase()} games found.</div></div>`;
+    setCount(0);
+    return;
+  }
+  grid.innerHTML = keys.map(k => renderMatchupCard(k, matchupData[k])).join('');
+  setCount(allProps.length);
+}
+
+window.showMatchup = function(matchup) {
+  const grid = document.getElementById('props');
+  const arr = (matchupData && matchupData[matchup]) || [];
+  grid.innerHTML = arr.map(renderPropCard).join('') || `<div class="card"><div class="muted">No props for ${matchup}.</div></div>`;
+  setCount(arr.length);
+};
+
+// ---------- Data loader (unified) ----------
+async function loadPlayerProps(league = currentSport) {
+  currentSport = (league || 'mlb').toLowerCase();
+
+  const propsUrl = `/api/${encodeURIComponent(currentSport)}/props`;
+  const envUrl   = `/api/${encodeURIComponent(currentSport)}/environment`;
+
+  const [propsRes, envRes] = await Promise.allSettled([
+    fetch(propsUrl, { cache: 'no-store' }),
+    fetch(envUrl,   { cache: 'no-store' })
+  ]);
+
+  payload = null;
+  if (propsRes.status === 'fulfilled' && propsRes.value.ok) {
+    payload = await propsRes.value.json().catch(() => null);
+  }
+
+  // environments are optional
+  environmentData = null;
+  if (envRes.status === 'fulfilled' && envRes.value.ok) {
+    const ej = await envRes.value.json().catch(() => ({}));
+    environmentData = ej && ej.environments ? ej.environments : null;
+  }
+
+  // Normalize to allProps + matchupData
+  let props = [];
+  let groups = {};
+  if (payload && Array.isArray(payload.props)) {
+    props = payload.props;
+    groups = payload.matchups && typeof payload.matchups === 'object'
+      ? payload.matchups
+      : groupByMatchup(props, currentSport);
+  } else if (Array.isArray(payload)) {
+    // (legacy fallback) array only
+    props = payload;
+    groups = groupByMatchup(props, currentSport);
+  }
+
+  // MLB-only filter: drop hits ≥ 2.5
+  if (currentSport === 'mlb') {
+    props = props.filter(p => {
+      const stat = p.stat || p.stat_type || '';
+      const line = parseFloat(p.line ?? p.point ?? 0);
+      return !((stat === 'batter_hits' || stat === 'hits') && line >= 2.5);
+    });
+    groups = groupByMatchup(props, currentSport);
+  }
+
+  allProps = props;
+  matchupData = groups;
+
+  displayTodaysGames();
+  hideLoading();
+}
+
+// ---------- Tabs ----------
+document.getElementById('tabs').addEventListener('click', (e) => {
+  const btn = e.target.closest('.tab'); if (!btn) return;
+  document.querySelectorAll('#tabs .tab').forEach(b => b.classList.toggle('active', b === btn));
+  loadPlayerProps(btn.dataset.league);
+});
+
+// ---------- Boot ----------
+document.addEventListener('DOMContentLoaded', () => loadPlayerProps('mlb'));
+</script>
