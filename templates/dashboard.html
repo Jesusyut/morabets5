@@ -104,9 +104,9 @@ let allProps = [];
 let matchupData = {};
 let environmentData = null;
 
-// ---------- Helpers ----------
+/* ---------- Helpers ---------- */
 function normalizeMatchup(p, league) {
-  if (league === 'ufc') {
+  if ((league||'') === 'ufc') {
     const a = p.fighter || p.fighter_a || p.player || 'Fighter A';
     const b = p.opponent || p.fighter_b || 'Fighter B';
     return `${a} vs ${b}`;
@@ -114,7 +114,7 @@ function normalizeMatchup(p, league) {
   const away = p.away_team || p.away || p.team_away || 'Away';
   const home = p.home_team || p.home || p.team_home || 'Home';
   const k = p.matchup || `${away} @ ${home}`;
-  return k.includes('@') || k.includes('vs') ? k : `${away} @ ${home}`;
+  return (k.includes('@') || k.includes('vs')) ? k : `${away} @ ${home}`;
 }
 
 function groupByMatchup(arr, league) {
@@ -126,28 +126,67 @@ function groupByMatchup(arr, league) {
   return out;
 }
 
-function toPct(x) { return (Number(x) * 100).toFixed(1) + '%'; }
 function setCount(n) { document.getElementById('count').textContent = (n||0).toLocaleString(); }
 function hideLoading() { const el = document.getElementById('loading'); if (el) el.style.display = 'none'; }
 
-// ---------- Cards ----------
+// tolerant readers for server fields
+function get(obj, pathArr) {
+  for (const p of pathArr) {
+    try {
+      const v = p.split('.').reduce((o,k)=>o?.[k], obj);
+      if (v != null) return v;
+    } catch {}
+  }
+  return null;
+}
+function asPct01(x) {
+  const n = Number(x);
+  if (!isFinite(n)) return null;
+  // Accept 0..1 or 0..100, normalize to 0..1:
+  const z = (n > 1.0) ? (n/100) : n;
+  return (z*100).toFixed(1) + '%';
+}
+
+/* ---------- Cards ---------- */
 function renderPropCard(p) {
   const stat = (p.stat || p.stat_type || '').replace(/_/g,' ');
   const line = p.point ?? p.line ?? '';
   const player = p.player || p.player_name || p.fighter || p.fighter_a || 'Player';
   const team = p.team || p.team_name || p.team_abbr || p.home_team || p.away_team || '';
+
   const over = p.over_odds ?? (typeof p.over === 'object' ? p.over?.price : p.over);
   const under = p.under_odds ?? (typeof p.under === 'object' ? p.under?.price : p.under);
 
-  // AI edge badge
+  // fair/contextual (tolerant to multiple possible shapes)
+  const fairOverProb = get(p, [
+    'fair.prob.over', 'fair.over', 'novig.prob.over', 'novig.over_prob',
+    'fair_over_prob', 'prob_over_fair'
+  ]);
+  const ctxOverProb  = get(p, [
+    'contextual.prob.over', 'contextual.over', 'context_over_prob'
+  ]);
+
+  const fairPct = asPct01(fairOverProb);
+  const ctxPct  = asPct01(ctxOverProb);
+
+  // EV badge (either % points 6.0 or 0.06)
   let edgeBadge = '';
-  if (p.ai && (p.ai.edge_over != null || p.ai.edge_under != null)) {
-    const eo = Number(p.ai.edge_over ?? -Infinity);
-    const eu = Number(p.ai.edge_under ?? -Infinity);
-    const pick = p.ai.pick || (Math.abs(eo) >= Math.abs(eu) ? 'OVER' : 'UNDER');
+  const eo = Number(get(p, ['ai.edge_over']));
+  const eu = Number(get(p, ['ai.edge_under']));
+  if (isFinite(eo) || isFinite(eu)) {
+    const pick = get(p, ['ai.pick']) || (Math.abs(eo) >= Math.abs(eu) ? 'OVER' : 'UNDER');
     const best = pick === 'OVER' ? eo : eu;
-    if (isFinite(best)) edgeBadge = `<span class="edge-badge">${pick} ${best.toFixed(1)}% EV</span>`;
+    if (isFinite(best)) {
+      const ev = Math.abs(best) <= 1 ? (best*100) : best; // normalize 0..1 -> %
+      edgeBadge = `<span class="edge-badge">${pick} ${ev.toFixed(1)}% EV</span>`;
+    }
   }
+
+  const analytics = `
+    <div class="muted" style="font-size:12px;margin-top:4px">
+      ${fairPct ? `Fair O: ${fairPct}` : ''}
+      ${ctxPct  ? ` • Context O: ${ctxPct}` : ''}
+    </div>`;
 
   return `
     <div class="card">
@@ -160,6 +199,7 @@ function renderPropCard(p) {
         ${over!=null?`<span class="pill over">O ${over}</span>`:''}
         ${under!=null?`<span class="pill under">U ${under}</span>`:''}
       </div>
+      ${analytics}
       <a class="tiny-link" href="#" onclick="displayTodaysGames();return false;">← Back to matchups</a>
     </div>
   `;
@@ -171,7 +211,7 @@ function renderMatchupCard(matchup, props) {
   const vs = isUFC ? 'vs' : '@';
   const [left, right] = (matchup || '').split(splitBy);
 
-  // Favored/high/low labels from environmentData (if present)
+  // env tag
   let envBadge = '';
   const env = environmentData && environmentData[matchup];
   if (env && (env.label || env.scoring || env.favored_team)) {
@@ -193,7 +233,7 @@ function renderMatchupCard(matchup, props) {
   `;
 }
 
-// ---------- Views ----------
+/* ---------- Views ---------- */
 function displayTodaysGames() {
   const grid = document.getElementById('props');
   const keys = Object.keys(matchupData || {});
@@ -209,11 +249,17 @@ function displayTodaysGames() {
 window.showMatchup = function(matchup) {
   const grid = document.getElementById('props');
   const arr = (matchupData && matchupData[matchup]) || [];
+  // sort by best EV descending
+  arr.sort((a,b) => {
+    const ae = Math.max(Number(get(a,['ai.edge_over'])??-999), Number(get(a,['ai.edge_under'])??-999));
+    const be = Math.max(Number(get(b,['ai.edge_over'])??-999), Number(get(b,['ai.edge_under'])??-999));
+    return be - ae;
+  });
   grid.innerHTML = arr.map(renderPropCard).join('') || `<div class="card"><div class="muted">No props for ${matchup}.</div></div>`;
   setCount(arr.length);
 };
 
-// ---------- Data loader (unified) ----------
+/* ---------- Data loader ---------- */
 async function loadPlayerProps(league = currentSport) {
   currentSport = (league || 'mlb').toLowerCase();
 
@@ -230,7 +276,6 @@ async function loadPlayerProps(league = currentSport) {
     payload = await propsRes.value.json().catch(() => null);
   }
 
-  // environments are optional
   environmentData = null;
   if (envRes.status === 'fulfilled' && envRes.value.ok) {
     const ej = await envRes.value.json().catch(() => ({}));
@@ -242,11 +287,10 @@ async function loadPlayerProps(league = currentSport) {
   let groups = {};
   if (payload && Array.isArray(payload.props)) {
     props = payload.props;
-    groups = payload.matchups && typeof payload.matchups === 'object'
+    groups = (payload.matchups && typeof payload.matchups === 'object')
       ? payload.matchups
       : groupByMatchup(props, currentSport);
   } else if (Array.isArray(payload)) {
-    // (legacy fallback) array only
     props = payload;
     groups = groupByMatchup(props, currentSport);
   }
@@ -268,13 +312,13 @@ async function loadPlayerProps(league = currentSport) {
   hideLoading();
 }
 
-// ---------- Tabs ----------
+/* ---------- Tabs ---------- */
 document.getElementById('tabs').addEventListener('click', (e) => {
   const btn = e.target.closest('.tab'); if (!btn) return;
   document.querySelectorAll('#tabs .tab').forEach(b => b.classList.toggle('active', b === btn));
   loadPlayerProps(btn.dataset.league);
 });
 
-// ---------- Boot ----------
+/* ---------- Boot ---------- */
 document.addEventListener('DOMContentLoaded', () => loadPlayerProps('mlb'));
 </script>
